@@ -1,6 +1,7 @@
 import { DataSource, DataSourceOptions } from 'typeorm';
 import * as dotenv from 'dotenv';
 import { User } from '../models/user.model';
+import { Todo } from '../models/todo.model';
 
 dotenv.config();
 
@@ -27,7 +28,7 @@ export const dataSourceOptions: DataSourceOptions = {
       ssl: false,
     },
   }),
-  entities: [User],
+  entities: [User, Todo],
   synchronize: !isProduction,
   logging: true,
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
