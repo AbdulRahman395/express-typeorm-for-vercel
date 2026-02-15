@@ -52,7 +52,7 @@ app.use(bodyParser.json());
 
 // Basic route
 app.get('/', (req: Request, res: Response) => {
-    res.send('Your Todo API is up and running!');
+    res.send('🚀 Todo API is running!');
 });
 
 // Health check endpoint
