@@ -10,6 +10,7 @@ import { Request, Response } from 'express';
 
 import routes from './routes/index.routes';
 import initializeDatabase from './config/database';
+import AppDataSource from './config/data-source';
 
 const app = express();
 
@@ -52,6 +53,54 @@ app.use(bodyParser.json());
 // Basic route
 app.get('/', (req: Request, res: Response) => {
     res.send('Your Todo API is up and running!');
+});
+
+// Health check endpoint
+app.get('/health', async (req: Request, res: Response) => {
+    try {
+        const startTime = Date.now();
+        
+        // Check database connection
+        const dbStatus = AppDataSource.isInitialized ? 'connected' : 'disconnected';
+        let dbResponseTime = 0;
+        
+        if (AppDataSource.isInitialized) {
+            const dbStartTime = Date.now();
+            await AppDataSource.query('SELECT 1');
+            dbResponseTime = Date.now() - dbStartTime;
+        }
+        
+        const responseTime = Date.now() - startTime;
+        
+        const health = {
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            responseTime: `${responseTime}ms`,
+            database: {
+                status: dbStatus,
+                responseTime: dbStatus === 'connected' ? `${dbResponseTime}ms` : 'N/A'
+            },
+            environment: process.env.NODE_ENV || 'unknown',
+            version: process.env.npm_package_version || '1.0.0',
+            memory: {
+                used: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
+                total: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`
+            }
+        };
+        
+        // Return 200 if database is connected, 503 if not
+        const statusCode = dbStatus === 'connected' ? 200 : 503;
+        res.status(statusCode).json(health);
+        
+    } catch (error) {
+        res.status(503).json({
+            status: 'unhealthy',
+            timestamp: new Date().toISOString(),
+            error: 'Database connection failed',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
 });
 
 app.use('/api/public', express.static(path.join(__dirname, 'uploads')));
