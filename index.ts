@@ -1,118 +1,66 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import 'reflect-metadata';
-import path from 'path';
-import express from 'express';
-import cors from 'cors';
-import bodyParser from 'body-parser';
-import { Request, Response } from 'express';
+import "reflect-metadata";
+import express, { Request, Response } from "express";
+import cors from "cors";
+import path from "path";
+import initializeDatabase from "./config/database";
 
-import routes from './routes/index.routes';
-import initializeDatabase from './config/database';
-import AppDataSource from './config/data-source';
+let server: any;
 
-const app = express();
+async function createServer() {
+  if (server) return server;
 
-// Initialize database
-initializeDatabase().catch(console.error);
+  const app = express();
 
-// Serve static files from public directory
-app.use(express.static('public'));
+  // Ensure DB initializes once
+  await initializeDatabase();
 
-// CORS configuration
-app.use(cors({
-  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    // Allow non-browser requests (Flutter mobile, Postman, etc.)
-    if (!origin) {
-      return callback(null, true);
-    }
+  // Static files
+  app.use(express.static("public"));
 
-    // Allow all localhost ports (Flutter Web, React dev)
-    if (
-      origin.startsWith('http://localhost') ||
-      origin.startsWith('http://127.0.0.1')
-    ) {
-      return callback(null, true);
-    }
+  // CORS
+  app.use(cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
 
-    // Allow all Vercel deployments
-    if (origin.endsWith('.vercel.app')) {
-      return callback(null, true);
-    }
+      if (
+        origin.startsWith("http://localhost") ||
+        origin.startsWith("http://127.0.0.1")
+      ) {
+        return callback(null, true);
+      }
 
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
-  },
-  credentials: true,
-}));
+      if (origin.endsWith(".vercel.app")) {
+        return callback(null, true);
+      }
 
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
-app.use(bodyParser.json());
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  }));
 
-// Basic route
-app.get('/', (req: Request, res: Response) => {
-    res.send('🚀 Todo API is running!');
-});
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint
-app.get('/health', async (req: Request, res: Response) => {
-    try {
-        const startTime = Date.now();
-        
-        // Check database connection
-        const dbStatus = AppDataSource.isInitialized ? 'connected' : 'disconnected';
-        let dbResponseTime = 0;
-        
-        if (AppDataSource.isInitialized) {
-            const dbStartTime = Date.now();
-            await AppDataSource.query('SELECT 1');
-            dbResponseTime = Date.now() - dbStartTime;
-        }
-        
-        const responseTime = Date.now() - startTime;
-        
-        const health = {
-            status: 'healthy',
-            timestamp: new Date().toISOString(),
-            uptime: process.uptime(),
-            responseTime: `${responseTime}ms`,
-            database: {
-                status: dbStatus,
-                responseTime: dbStatus === 'connected' ? `${dbResponseTime}ms` : 'N/A'
-            },
-            environment: process.env.NODE_ENV || 'unknown',
-            version: process.env.npm_package_version || '1.0.0',
-            memory: {
-                used: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
-                total: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`
-            }
-        };
-        
-        // Return 200 if database is connected, 503 if not
-        const statusCode = dbStatus === 'connected' ? 200 : 503;
-        res.status(statusCode).json(health);
-        
-    } catch (error) {
-        res.status(503).json({
-            status: 'unhealthy',
-            timestamp: new Date().toISOString(),
-            error: 'Database connection failed',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-});
+  app.get("/", (req: Request, res: Response) => {
+    res.send("🚀 Todo API is running!");
+  });
 
-app.use('/api/public', express.static(path.join(__dirname, 'uploads')));
-app.use('/api', routes);
+  server = app;
+  return server;
+}
 
-const port = process.env.PORT || 3000;
-
-app.listen(port, () => {
-    console.log(`✅ Server is listening on port ${port}`);
-});
-
-// Vercel serverless function export
 export default async function handler(req: Request, res: Response) {
+  const app = await createServer();
   return app(req, res);
+}
+
+if (!process.env.VERCEL) {
+  createServer().then((app) => {
+    app.listen(3000, () => {
+      console.log("🚀 Local server ready on port 3000");
+    });
+  });
 }
